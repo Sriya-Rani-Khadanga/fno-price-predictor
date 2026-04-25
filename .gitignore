@@ -10,3 +10,9 @@ recordings/
 .env
 .vscode/
 .idea/
+
+.venv/
+.python_deps/
+node_modules/
+.DS_Store
+.pytest_cache/
