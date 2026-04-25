@@ -1,0 +1,43 @@
+name: pcp-arb-rl
+version: 0.1.0
+observation_type: text
+action_type: json
+description: "Put-Call Parity Arbitrage RL environment with MCP tool-calling for NSE equity options. The agent actively queries market data, risk state, and cost servers before making trading decisions."
+endpoints:
+  port: 8000
+  reset: /reset
+  step: /step
+  state: /state
+  health: /health
+tools:
+  market_data:
+    port: 8001
+    endpoints:
+      - get_option_chain
+      - get_spot_price
+      - get_pcp_deviation
+      - get_iv_surface
+      - get_historical_violations
+      - get_market_regime
+  risk:
+    port: 8002
+    endpoints:
+      - get_position_state
+      - check_entry_allowed
+      - get_daily_pnl
+      - estimate_exit_pnl
+      - get_risk_limits
+  cost:
+    port: 8003
+    endpoints:
+      - calculate_arb_costs
+      - get_breakeven_violation
+      - simulate_stt_trap
+      - get_cost_history
+curriculum:
+  stages: [OBVIOUS, MODERATE, REALISTIC, LIVE_SIM]
+reward_components:
+  - profitability
+  - timing
+  - cost_awareness
+  - format_compliance

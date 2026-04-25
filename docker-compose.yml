@@ -1,0 +1,91 @@
+version: "3.9"
+
+services:
+  market-data:
+    build: .
+    command: python -m uvicorn mcp_servers.market_data_server:app --host 0.0.0.0 --port 8001
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./data/historical/cache:/app/data/historical/cache
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - pcp-net
+
+  risk:
+    build: .
+    command: python -m uvicorn mcp_servers.risk_server:app --host 0.0.0.0 --port 8002
+    ports:
+      - "8002:8002"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - pcp-net
+
+  cost:
+    build: .
+    command: python -m uvicorn mcp_servers.cost_server:app --host 0.0.0.0 --port 8003
+    ports:
+      - "8003:8003"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - pcp-net
+
+  env-server:
+    build: .
+    command: python -m uvicorn pcp_arb_env.server:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    depends_on:
+      market-data:
+        condition: service_healthy
+      risk:
+        condition: service_healthy
+      cost:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - pcp-net
+
+  app:
+    build: .
+    command: python main.py --mode ${MODE:-demo} --underlying ${UNDERLYING:-NIFTY} --start ${START:-2024-01-01} --end ${END:-2024-06-30} --feed ${FEED:-mock} --checkpoint ${CHECKPOINT:-checkpoints/latest}
+    depends_on:
+      market-data:
+        condition: service_healthy
+      risk:
+        condition: service_healthy
+      cost:
+        condition: service_healthy
+    environment:
+      - MODE=${MODE:-demo}
+      - FEED=${FEED:-mock}
+      - UNDERLYING=${UNDERLYING:-NIFTY}
+      - CHECKPOINT=${CHECKPOINT:-checkpoints/latest}
+    volumes:
+      - ./data/historical/cache:/app/data/historical/cache
+      - ./recordings:/app/recordings
+      - ./reports:/app/reports
+      - ./logs:/app/logs
+      - ./checkpoints:/app/checkpoints
+    networks:
+      - pcp-net
+
+networks:
+  pcp-net:
+    driver: bridge

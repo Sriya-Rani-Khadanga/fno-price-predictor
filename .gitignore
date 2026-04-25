@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+data/historical/cache/*.parquet
+data/historical/cache/sessions/
+logs/*.jsonl
+reports/*.html
+reports/*.json
+checkpoints/
+recordings/
+.env
+.vscode/
+.idea/
