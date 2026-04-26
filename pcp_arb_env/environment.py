@@ -64,7 +64,10 @@ class PCPArbEnv:
         self._action_log = []
         self._violations_detected = []
         self._done = False
-        self._tick = self.feed.reset(start_time=start_time)
+        try:
+            self._tick = self.feed.reset(start_time=start_time)
+        except TypeError:
+            self._tick = self.feed.reset()
         self._session_start = self._tick.timestamp
         if self.curriculum.should_fast_forward():
             min_pct = self.curriculum.get_violation_range()[0]
