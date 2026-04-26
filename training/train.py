@@ -4,6 +4,7 @@ GRPO training script using TRL + Unsloth for PCP arbitrage agent.
 from __future__ import annotations
 import json
 import os
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -45,7 +46,7 @@ def train(total_steps: int = 3000, checkpoint_path: str = None,
     from pcp_arb_env.environment import PCPArbEnv
     from pcp_arb_env.curriculum import CurriculumManager
     from training.curriculum_scheduler import CurriculumScheduler
-    from training.rollout import SYSTEM_PROMPT, parse_action
+    from training.rollout import SYSTEM_PROMPT
 
     curriculum = CurriculumManager()
     scheduler = CurriculumScheduler(curriculum)
@@ -83,11 +84,104 @@ def train(total_steps: int = 3000, checkpoint_path: str = None,
     step_counter = [0]
     metrics_log = []
 
+    def _parse_completion_action(completion: str) -> tuple[Dict, bool]:
+        """Parse completion leniently into the environment's expected action dict."""
+        valid_keywords = {"BUY_CALL", "SELL_CALL", "BUY_PUT", "SELL_PUT", "HOLD"}
+        keyword_to_action_type = {
+            "BUY_CALL": "enter_long_call_short_put",
+            "SELL_PUT": "enter_long_call_short_put",
+            "SELL_CALL": "enter_short_call_long_put",
+            "BUY_PUT": "enter_short_call_long_put",
+            "HOLD": "hold",
+        }
+
+        clean = completion.strip()
+        payload = None
+        parsed_ok = False
+
+        try:
+            payload = json.loads(clean)
+            parsed_ok = True
+        except (json.JSONDecodeError, TypeError, ValueError):
+            match = re.search(r"\{.*\}", clean, re.DOTALL)
+            if match:
+                try:
+                    payload = json.loads(match.group(0))
+                    parsed_ok = True
+                except (json.JSONDecodeError, TypeError, ValueError):
+                    payload = None
+
+        if isinstance(payload, dict):
+            action_value = str(
+                payload.get("action_type", payload.get("action", "HOLD"))
+            ).strip()
+            normalized = action_value.upper()
+            action_type = payload.get("action_type")
+            if not action_type and normalized in keyword_to_action_type:
+                action_type = keyword_to_action_type[normalized]
+            return {
+                "action_type": action_type or "hold",
+                "tool_calls": payload.get("tool_calls", []),
+                "strike": payload.get("strike"),
+                "qty": payload.get("qty", 1),
+            }, parsed_ok
+
+        upper_completion = clean.upper()
+        for keyword in valid_keywords:
+            if keyword in upper_completion:
+                return {
+                    "action_type": keyword_to_action_type[keyword],
+                    "tool_calls": [],
+                    "strike": None,
+                    "qty": 1,
+                }, False
+
+        return {"action_type": "hold", "tool_calls": [], "strike": None, "qty": 1}, False
+
+    def format_reward(completions: List[str], **kwargs) -> List[float]:
+        """Award partial credit for increasingly well-formed action JSON."""
+        valid_keywords = {"BUY_CALL", "SELL_CALL", "BUY_PUT", "SELL_PUT", "HOLD"}
+        rewards = []
+        for completion in completions:
+            reward = 0.0
+            clean = completion.strip()
+
+            if "{" in clean and "}" in clean:
+                reward += 0.2
+
+            payload = None
+            parsed_ok = False
+            try:
+                payload = json.loads(clean)
+                parsed_ok = True
+            except (json.JSONDecodeError, TypeError, ValueError):
+                match = re.search(r"\{.*\}", clean, re.DOTALL)
+                if match:
+                    try:
+                        payload = json.loads(match.group(0))
+                        parsed_ok = True
+                    except (json.JSONDecodeError, TypeError, ValueError):
+                        payload = None
+
+            if isinstance(payload, dict):
+                if "action" in payload:
+                    reward += 0.2
+                    action_value = str(payload.get("action", "")).strip().upper()
+                    if action_value in valid_keywords:
+                        reward += 0.3
+                if "strike" in payload:
+                    reward += 0.15
+                if parsed_ok:
+                    reward += 0.15
+
+            rewards.append(reward)
+        return rewards
+
     def reward_fn(completions: List[str], **kwargs) -> List[float]:
         """GRPO reward function — evaluates each completion in the environment."""
         rewards = []
         for completion in completions:
-            action, parsed_ok = parse_action(completion)
+            action, parsed_ok = _parse_completion_action(completion)
             # Simulate a step with this action
             try:
                 result = env.step(action)
@@ -146,7 +240,7 @@ def train(total_steps: int = 3000, checkpoint_path: str = None,
         args=training_args,
         train_dataset=train_data,
         processing_class=tokenizer,
-        reward_funcs=reward_fn,
+        reward_funcs=[format_reward, reward_fn],
     )
 
     print(f"[Train] Starting GRPO training for {total_steps} steps...")
