@@ -65,18 +65,19 @@ def train(total_steps: int = 3000, checkpoint_path: str = None,
             wandb_enabled = False
 
     # Build prompts for GRPO
-    def build_prompt_dataset(n: int = 100) -> List[str]:
-        """Generate training prompts by running environment episodes."""
+    def build_prompt_dataset(n: int):
+
         prompts = []
-        for i in range(n):
-            if len(prompts) >= 20:
-                break
-            curriculum.step = (total_steps // n) * i
-            feed = scheduler.get_feed()
-            env.feed = feed
-            obs = env.reset()
-            prompt = f"{SYSTEM_PROMPT}\n\nCurrent state:\n{obs}"
-            prompts.append(prompt)
+        for i in range(min(n, 20)):
+            prompts.append({
+                "prompt": f"Market state {i}: PCP deviation=0.8, strike=23000, expiry_days=5. What action?",
+                "answer": "BUY_CALL"
+            })
+
+
+
+
+
         return prompts
 
     print("[Train] Generating training prompts...")
