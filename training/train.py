@@ -68,7 +68,7 @@ def train(total_steps: int = 3000, checkpoint_path: str = None,
     def build_prompt_dataset(n: int):
 
         prompts = []
-        for i in range(min(n, 20)):
+        for i in range(min(n, 210)):
             prompts.append({
                 "prompt": f"Market state {i}: PCP deviation=0.8, strike=23000, expiry_days=5. What action?",
                 "answer": "BUY_CALL"
@@ -81,7 +81,7 @@ def train(total_steps: int = 3000, checkpoint_path: str = None,
         return prompts
 
     print("[Train] Generating training prompts...")
-    prompts = build_prompt_dataset(20)
+    prompts = build_prompt_dataset(210)
 
     # GRPO reward function
     step_counter = [0]
