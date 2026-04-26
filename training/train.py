@@ -69,6 +69,8 @@ def train(total_steps: int = 3000, checkpoint_path: str = None,
         """Generate training prompts by running environment episodes."""
         prompts = []
         for i in range(n):
+            if len(prompts) >= 20:
+                break
             curriculum.step = (total_steps // n) * i
             feed = scheduler.get_feed()
             env.feed = feed
@@ -78,7 +80,7 @@ def train(total_steps: int = 3000, checkpoint_path: str = None,
         return prompts
 
     print("[Train] Generating training prompts...")
-    prompts = build_prompt_dataset(min(total_steps, 200))
+    prompts = build_prompt_dataset(20)
 
     # GRPO reward function
     step_counter = [0]
